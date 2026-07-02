@@ -40,7 +40,7 @@ resource "aws_s3_bucket_policy" "site_policy" {
 
 data "aws_iam_policy_document" "site_policy_doc" {
   statement {
-    sid       = "AllowCloudFrontAccessOnly"
+    sid       = "AllowPublicAccess"
     effect    = "Allow"
     actions   = ["s3:GetObject"]
     resources = ["${aws_s3_bucket.site.arn}/*"]
@@ -48,15 +48,6 @@ data "aws_iam_policy_document" "site_policy_doc" {
     principals {
       type        = "*"
       identifiers = ["*"]
-    }
-
-    dynamic "condition" {
-      for_each = var.referer_secret != "" ? [1] : []
-      content {
-        test     = "StringEquals"
-        variable = "aws:Referer"
-        values   = [var.referer_secret]
-      }
     }
   }
 }
