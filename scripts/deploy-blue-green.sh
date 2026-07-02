@@ -2,16 +2,16 @@
 set -euo pipefail
 
 # Ensure variables are set
-if [ -z "${PROD_DISTRIBUTION_ID:-}" ] || \
-   [ -z "${BLUE_BUCKET_NAME:-}" ] || \
+if [ -z "${BLUE_BUCKET_NAME:-}" ] || \
    [ -z "${GREEN_BUCKET_NAME:-}" ] || \
    [ -z "${BLUE_BUCKET_ENDPOINT:-}" ] || \
    [ -z "${GREEN_BUCKET_ENDPOINT:-}" ] || \
-   [ -z "${PRODUCTION_URL:-}" ] || \
    [ -z "${SSM_PARAMETER_NAME:-}" ]; then
-  echo "Error: Required environment variables (PROD_DISTRIBUTION_ID, BLUE_BUCKET_NAME, GREEN_BUCKET_NAME, BLUE_BUCKET_ENDPOINT, GREEN_BUCKET_ENDPOINT, PRODUCTION_URL, SSM_PARAMETER_NAME) are missing."
+  echo "Error: Required environment variables (BLUE_BUCKET_NAME, GREEN_BUCKET_NAME, BLUE_BUCKET_ENDPOINT, GREEN_BUCKET_ENDPOINT, SSM_PARAMETER_NAME) are missing."
   exit 1
 fi
+
+PRODUCTION_URL="${PRODUCTION_URL:-}"
 
 echo "=== Starting Blue-Green Production Deployment ==="
 
@@ -24,12 +24,10 @@ if [ "$active_color" = "blue" ]; then
   inactive_color="green"
   target_bucket="$GREEN_BUCKET_NAME"
   target_endpoint="$GREEN_BUCKET_ENDPOINT"
-  target_origin_id="prod-green-origin"
 elif [ "$active_color" = "green" ]; then
   inactive_color="blue"
   target_bucket="$BLUE_BUCKET_NAME"
   target_endpoint="$BLUE_BUCKET_ENDPOINT"
-  target_origin_id="prod-blue-origin"
 else
   echo "Error: Invalid active color returned from SSM: $active_color"
   exit 1
@@ -69,35 +67,7 @@ if [ "$success" = false ]; then
   exit 1
 fi
 
-# 4. Switch CloudFront origin pointing
-echo "Fetching current CloudFront distribution config..."
-aws cloudfront get-distribution-config --id "$PROD_DISTRIBUTION_ID" > dist_config_raw.json
-
-etag=$(jq -r '.ETag' dist_config_raw.json)
-jq '.DistributionConfig' dist_config_raw.json > dist_config.json
-
-echo "Modifying distribution config target origin to: $target_origin_id..."
-jq --arg origin "$target_origin_id" '.DefaultCacheBehavior.TargetOriginId = $origin' dist_config.json > updated_config.json
-
-echo "Updating CloudFront distribution routing..."
-aws cloudfront update-distribution \
-  --id "$PROD_DISTRIBUTION_ID" \
-  --distribution-config file://updated_config.json \
-  --if-match "$etag" > /dev/null
-
-echo "✔ CloudFront distribution updated to point to $inactive_color origin."
-
-# 5. Invalidate CloudFront cache
-echo "Creating CloudFront cache invalidation for production distribution..."
-invalidation_id=$(aws cloudfront create-invalidation \
-  --distribution-id "$PROD_DISTRIBUTION_ID" \
-  --paths "/*" \
-  --query "Invalidation.Id" \
-  --output text)
-
-echo "Invalidation created with ID: $invalidation_id"
-
-# 6. Update SSM active color tracker
+# 4. Update SSM active color tracker
 echo "Updating SSM parameter active color to: $inactive_color..."
 aws ssm put-parameter \
   --name "$SSM_PARAMETER_NAME" \
@@ -107,7 +77,7 @@ aws ssm put-parameter \
 
 echo "✔ SSM parameter store updated."
 
-# 7. Print rollback instructions to Job Summary (if GITHUB_STEP_SUMMARY environment variable exists)
+# 5. Print summary to Job Summary
 if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
   cat <<EOF >> "$GITHUB_STEP_SUMMARY"
 ## 🚀 Production Deployment Completed (Blue-Green Switch)
@@ -116,13 +86,11 @@ if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
 |---|---|
 | **Deploy Target** | \`$inactive_color\` (\`$target_bucket\`) |
 | **Previous Version** | \`$active_color\` |
-| **Production URL** | [$PRODUCTION_URL]($PRODUCTION_URL) |
+| **Staging URL** | http://$target_endpoint |
 
 ### ↩️ Rollback Instructions
-To rollback to the previous version (\`$active_color\`), trigger the rollback workflow manually or execute the following script:
+To rollback to the previous version (\`$active_color\`), run:
 \`\`\`bash
-# Authenticate with AWS and execute:
-export PROD_DISTRIBUTION_ID="$PROD_DISTRIBUTION_ID"
 export SSM_PARAMETER_NAME="$SSM_PARAMETER_NAME"
 ./scripts/rollback.sh
 \`\`\`

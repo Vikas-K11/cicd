@@ -1,16 +1,11 @@
-output "staging_url" {
-  value       = "https://${module.cloudfront_staging.domain_name}"
-  description = "The URL of the staging environment fronted by CloudFront"
-}
-
-output "production_url" {
-  value       = "https://${module.cloudfront_prod.domain_name}"
-  description = "The URL of the production environment fronted by CloudFront"
-}
-
 output "staging_bucket_name" {
   value       = module.s3_staging.bucket_id
   description = "The name of the staging S3 bucket"
+}
+
+output "staging_url" {
+  value       = "http://${module.s3_staging.website_endpoint}"
+  description = "The URL of the staging S3 website"
 }
 
 output "prod_blue_bucket_name" {
@@ -23,19 +18,14 @@ output "prod_green_bucket_name" {
   description = "The name of the prod-green S3 bucket"
 }
 
-output "cloudfront_staging_distribution_id" {
-  value       = module.cloudfront_staging.dist_id
-  description = "The Staging CloudFront Distribution ID"
+output "blue_bucket_endpoint" {
+  value       = module.s3_prod_blue.website_endpoint
+  description = "The S3 website endpoint for the blue bucket"
 }
 
-output "cloudfront_prod_distribution_id" {
-  value       = module.cloudfront_prod.dist_id
-  description = "The Production CloudFront Distribution ID"
-}
-
-output "github_actions_role_arn" {
-  value       = aws_iam_role.github_actions.arn
-  description = "The AWS IAM Role ARN for GitHub Actions OIDC"
+output "green_bucket_endpoint" {
+  value       = module.s3_prod_green.website_endpoint
+  description = "The S3 website endpoint for the green bucket"
 }
 
 output "ssm_parameter_active_color_name" {

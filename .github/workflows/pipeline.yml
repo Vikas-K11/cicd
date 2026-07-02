@@ -6,8 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  id-token: write # Required for AWS OIDC authentication
-  contents: read # Required to checkout code
+  contents: read
 
 jobs:
   build-and-lint-test:
@@ -17,7 +16,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Required for SonarCloud history analysis
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -42,7 +41,7 @@ jobs:
 
       - name: SonarCloud Scan
         uses: SonarSource/sonarqube-scan-action@v5
-        continue-on-error: true # Allow pipeline to proceed if SonarCloud project/token isn't configured yet
+        continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -56,7 +55,7 @@ jobs:
           scan-type: 'fs'
           scan-ref: 'dist/'
           severity: 'HIGH,CRITICAL'
-          exit-code: '1' # Fails the pipeline if vulnerabilities are found
+          exit-code: '1'
 
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v4
@@ -79,16 +78,17 @@ jobs:
           name: build-output
           path: dist/
 
-      - name: Configure AWS Credentials (OIDC)
+      - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Run Staging Deployment
         env:
           STAGING_BUCKET_NAME: ${{ secrets.STAGING_BUCKET_NAME }}
-          STAGING_DISTRIBUTION_ID: ${{ secrets.STAGING_DISTRIBUTION_ID }}
           STAGING_URL: ${{ secrets.STAGING_URL }}
         run: |
           chmod +x ./scripts/*.sh
@@ -98,7 +98,6 @@ jobs:
     name: Deploy to Production (Blue-Green)
     needs: deploy-staging
     runs-on: ubuntu-latest
-    environment: production # Triggers the manual approval gate in GitHub
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -109,15 +108,16 @@ jobs:
           name: build-output
           path: dist/
 
-      - name: Configure AWS Credentials (OIDC)
+      - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Run Production Blue-Green Deployment
         env:
-          PROD_DISTRIBUTION_ID: ${{ secrets.PROD_DISTRIBUTION_ID }}
           BLUE_BUCKET_NAME: ${{ secrets.BLUE_BUCKET_NAME }}
           GREEN_BUCKET_NAME: ${{ secrets.GREEN_BUCKET_NAME }}
           BLUE_BUCKET_ENDPOINT: ${{ secrets.BLUE_BUCKET_ENDPOINT }}
