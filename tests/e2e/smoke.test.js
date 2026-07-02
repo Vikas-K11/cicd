@@ -11,7 +11,7 @@ test.describe('Static Website Smoke Tests', () => {
     await expect(header).toBeVisible();
     
     const heading = page.locator('h1');
-    await expect(heading).toHaveText('Automated Static Web Pipeline');
+    await expect(heading).toHaveText('Static Web Pipeline');
   });
 
   test('About page loads successfully and contains system blueprint info', async ({ page }) => {
