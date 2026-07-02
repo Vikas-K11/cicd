@@ -13,11 +13,11 @@ variable "project_name" {
 variable "github_org" {
   type        = string
   description = "GitHub Organization or Username"
-  default     = "raghavendra2006"
+  default     = "Vikas-K11"
 }
 
 variable "github_repo" {
   type        = string
   description = "GitHub Repository Name"
-  default     = "STATIC-WEBSITE-USING-CI-CD"
+  default     = "cicd"
 }
