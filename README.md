@@ -129,3 +129,4 @@ If a critical production bug is detected and you need to revert to the previous 
    ./scripts/rollback.sh
    ```
 This updates CloudFront to point to the alternate S3 bucket, invalidates the CDN edge caches, and updates the SSM state, resulting in a rollback under 30 seconds with zero website downtime.
+
