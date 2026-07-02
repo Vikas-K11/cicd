@@ -1,135 +1,151 @@
-# Static Website CI/CD Pipeline (Blue-Green S3 Deployment)
+# ⚡ Static Website CI/CD Pipeline (S3 Blue-Green Deployment)
 
-A professional, production-grade DevOps pipeline for building, testing, securing, and deploying a high-performance static website on AWS S3 using GitHub Actions.
+<p align="center">
+  <img src="https://img.shields.io/github/actions/workflow/status/Vikas-K11/cicd/pipeline.yml?branch=main&style=for-the-badge&logo=github-actions&logoColor=white" alt="Pipeline Status">
+  <img src="https://img.shields.io/badge/AWS-S3%20%26%20SSM-FF9900?style=for-the-badge&logo=amazon-aws&logoColor=white" alt="AWS Services">
+  <img src="https://img.shields.io/badge/Terraform-%3E%3D%201.2.0-7B42BC?style=for-the-badge&logo=terraform&logoColor=white" alt="Terraform">
+  <img src="https://img.shields.io/badge/Playwright-E2E%20Testing-2EAD33?style=for-the-badge&logo=playwright&logoColor=white" alt="Playwright">
+</p>
 
-This setup is optimized for environments with restricted AWS IAM permissions (such as AWS Lab environments), utilizing direct S3 static website hosting and a zero-downtime Blue-Green promotion strategy managed via AWS Systems Manager (SSM) Parameter Store.
+A production-grade, highly secure DevOps pipeline for building, testing, and deploying a high-performance static website on AWS using GitHub Actions. 
+
+This repository implements a **zero-downtime Blue-Green deployment strategy** using dual S3 buckets and AWS Systems Manager (SSM) Parameter Store to seamlessly swap environments upon successful quality checks.
 
 ---
 
-## 🏗️ Architecture Summary
+## 🧭 Table of Contents
+1. [🏗️ System Architecture](#️-system-architecture)
+2. [✨ Features](#-features)
+3. [🛠️ Technology Stack](#️-technology-stack)
+4. [🚀 Quick Start Guide](#-quick-start-guide)
+5. [⚙️ GitHub Secrets Configuration](#️-github-secrets-configuration)
+6. [🔄 Blue-Green Switching & Rollbacks](#-blue-green-switching--rollbacks)
+7. [🧪 Local Development & Verification](#-local-development--verification)
+
+---
+
+## 🏗️ System Architecture
 
 ```mermaid
-graph TD
-    Developer[Developer Push] -->|Git Push| GitHub[GitHub Repository]
-    GitHub -->|Trigger| Pipeline[GitHub Actions Pipeline]
-    
-    subgraph CI_Stage [CI: Build & Test]
-        Pipeline --> Build[Build & Lint]
-        Build --> E2ETest[Playwright E2E Tests]
-        E2ETest --> Security[Trivy & npm audit Security Scans]
-        Security --> Sonar[SonarCloud Quality Analysis]
+graph LR
+    Dev[💻 Developer Push] -->|Git Push| GitHub[🐙 GitHub Repo]
+    GitHub -->|Trigger| Pipeline[⚙️ GitHub Actions]
+
+    subgraph CI [1. Continuous Integration]
+        Pipeline --> Build[📦 Build & Lint]
+        Build --> Playwright[🧪 E2E Playwright]
+        Playwright --> Security[🛡️ Trivy & audit Scan]
     end
 
-    subgraph CD_Stage [CD: Deployment]
-        Sonar --> DeployStg[Deploy to Staging S3]
-        DeployStg --> DeployProd[Blue-Green Production Deploy]
+    subgraph CD [2. Continuous Deployment]
+        Security --> StgDeploy[🚀 Deploy to Staging S3]
+        StgDeploy --> ProdDeploy[🟢 Blue-Green Prod Deploy]
     end
 
-    DeployProd -->|Query Active Color| SSM[AWS SSM Parameter Store]
-    DeployProd -->|Sync Files| S3Active[Deploy to Inactive S3 Bucket]
-    DeployProd -->|Validate| Smoke[Smoke Check URL]
-    Smoke -->|Success| SSMUpdate[Switch Active Color SSM Parameter]
+    ProdDeploy -->|Read active color| SSM[🔑 AWS SSM Parameter]
+    ProdDeploy -->|Deploy files| InactiveS3[🪣 Inactive S3 Bucket]
+    ProdDeploy -->|Smoke check| Verify[🔍 Smoke Check URL]
+    Verify -->|Passes| UpdateSSM[🔄 Switch Active SSM Color]
 ```
 
-1. **Continuous Integration (CI)**: 
-   * Automated linting (HTML, CSS, JS) and building.
-   * End-to-End (E2E) testing using Playwright in a head-less browser environment.
-   * Code quality scan using SonarCloud.
-   * Security vulnerability assessments via Trivy (file system scan) and `npm audit`.
-2. **Continuous Deployment (CD)**:
-   * **Staging deployment**: Automatically deployed to the Staging S3 website bucket upon a successful CI run.
-   * **Production deployment (Blue-Green)**: Deploys zero-downtime updates by syncing code to the currently *inactive* production S3 bucket, verifying it with a smoke check, and updating the active color pointer in the AWS SSM Parameter Store.
+---
+
+## ✨ Features
+
+*   **Zero-Downtime Releases:** Production deployments route traffic to the inactive environment, smoke-test it, and switch parameter points instantly.
+*   **Automated Quality Gates:** Strict linting (HTML, CSS, JS) and Playwright browser tests must pass before any code reaches hosting.
+*   **Pre-Release Security Scans:** Built-in vulnerability checks using **Trivy File System Scanning** and `npm audit`.
+*   **Infrastructure as Code (IaC):** Fully declarative provisioning of AWS S3 Buckets, website endpoints, and SSM configs using Terraform.
+*   **Instant Rollbacks:** Swift rollback capability to revert back to the previous version in under 30 seconds if a production issue is detected.
 
 ---
 
-## ⚙️ Prerequisites
+## 🛠️ Technology Stack
 
-To deploy and maintain this infrastructure, you need:
-* An **AWS Account** with access key credentials.
-* **Terraform CLI** installed locally (to manage S3 buckets and SSM parameters).
-* **Node.js** (v18.x or higher) and **npm** installed locally.
-* A **GitHub Repository** containing this codebase.
+*   **Frontend:** HTML5, CSS3, Vanilla JavaScript (Vite compiler)
+*   **Infrastructure:** Terraform, S3 Website Hosting, AWS SSM Parameter Store
+*   **CI/CD Engine:** GitHub Actions
+*   **Testing:** Playwright E2E framework
+*   **Security:** Aquasecurity Trivy, npm security audit
 
 ---
 
-## 🚀 Setup & Deployment Steps
+## 🚀 Quick Start Guide
 
-### Step 1: Deploy Infrastructure
-
-Navigate to the `infra/terraform/` directory and deploy the S3 buckets and SSM parameters using Terraform:
-
+### Step 1: Deploy AWS Resources
+Navigate to the Terraform folder and initialize/apply the configuration:
 ```bash
-# Initialize Terraform
+cd infra/terraform
 terraform init
-
-# Plan and preview the infrastructure changes
-terraform plan
-
-# Create the S3 website buckets and SSM configuration
 terraform apply -auto-approve
 ```
 
-Take note of the Terraform output values, as you will need them to configure GitHub Secrets:
-* `staging_url`
-* `staging_bucket_name`
-* `blue_bucket_endpoint`
-* `green_bucket_endpoint`
-* `prod_blue_bucket_name`
-* `prod_green_bucket_name`
-* `ssm_parameter_active_color_name`
+Save the values generated from the Terraform outputs. You will need them for Step 2.
 
-### Step 2: Configure GitHub Repository Secrets
+### Step 2: Configure Secrets
+Add the values from your Terraform output as Secrets inside your GitHub Repository (**Settings** -> **Secrets and variables** -> **Actions**). Refer to the configuration table below.
 
-Go to your repository on GitHub -> **Settings** -> **Secrets and variables** -> **Actions** and add the following repository secrets:
-
-| Secret Name | Description / Value |
-|---|---|
-| `AWS_ACCESS_KEY_ID` | Your AWS Access Key ID |
-| `AWS_SECRET_ACCESS_KEY` | Your AWS Secret Access Key |
-| `AWS_SESSION_TOKEN` | Your AWS Session Token (required for temporary credentials/lab environments) |
-| `AWS_REGION` | AWS Region where S3 buckets are hosted (e.g. `us-east-1`) |
-| `STAGING_BUCKET_NAME` | The staging S3 bucket name (from Terraform output) |
-| `STAGING_URL` | The staging website S3 URL (from Terraform output) |
-| `BLUE_BUCKET_NAME` | The production blue S3 bucket name (from Terraform output) |
-| `GREEN_BUCKET_NAME` | The production green S3 bucket name (from Terraform output) |
-| `BLUE_BUCKET_ENDPOINT` | The blue S3 website endpoint domain (from Terraform output) |
-| `GREEN_BUCKET_ENDPOINT` | The green S3 website endpoint domain (from Terraform output) |
-| `PRODUCTION_URL` | Default production entrypoint URL (typically the Blue endpoint) |
-| `SSM_PARAMETER_NAME` | `/site/static-site-cicd/prod-active-color` |
-| `SONAR_TOKEN` | (Optional) Token generated from SonarCloud for code quality scans |
+### Step 3: Trigger the Pipeline
+Push a change to the `main` branch to trigger the pipeline automatically:
+```bash
+git add .
+git commit -m "feat: customize web styling"
+git push origin main
+```
 
 ---
 
-## 🔄 Blue-Green Routing Mechanism
+## ⚙️ GitHub Secrets Configuration
 
-Instead of relying on a CDN router, this pipeline uses a lightweight, S3-level Blue-Green routing scheme:
-1. The deployment script checks the AWS SSM Parameter Store to see which color (`blue` or `green`) is currently marked active.
-2. The pipeline builds and syncs the new site files to the **inactive** bucket (e.g., if Blue is active, it syncs to Green).
-3. The script executes a curl-based smoke check directly against the inactive S3 bucket website endpoint.
-4. If successful, the SSM Parameter Store is updated to reflect the new active color, completing a seamless roll-forward deployment.
+Set up the following variables in GitHub to authorize the deployment runner:
 
-### Triggering a Rollback
-If a bug is discovered in production, you can instantly swap back to the previous version by updating the active color parameter back to the alternate bucket:
+| Secret Name | Source / Value | Target Environment |
+|---|---|---|
+| `AWS_ACCESS_KEY_ID` | AWS Credentials | AWS Authentication |
+| `AWS_SECRET_ACCESS_KEY` | AWS Credentials | AWS Authentication |
+| `AWS_SESSION_TOKEN` | AWS Session Token (if using AWS Labs) | AWS Authentication |
+| `AWS_REGION` | e.g. `us-east-1` | AWS Authentication |
+| `STAGING_BUCKET_NAME` | `staging_bucket_name` (TF output) | Staging CD |
+| `STAGING_URL` | `staging_url` (TF output) | Staging Smoke Check |
+| `BLUE_BUCKET_NAME` | `prod_blue_bucket_name` (TF output) | Production CD |
+| `GREEN_BUCKET_NAME` | `prod_green_bucket_name` (TF output) | Production CD |
+| `BLUE_BUCKET_ENDPOINT` | `blue_bucket_endpoint` (TF output) | Production CD |
+| `GREEN_BUCKET_ENDPOINT` | `green_bucket_endpoint` (TF output) | Production CD |
+| `PRODUCTION_URL` | Endpoint of the active S3 Website | Prod Smoke Check |
+| `SSM_PARAMETER_NAME` | `/site/static-site-cicd/prod-active-color` | Active Environment Lookup |
 
+---
+
+## 🔄 Blue-Green Switching & Rollbacks
+
+During deployment, the script automatically target the alternate S3 bucket:
+
+1. Resolves active target (e.g. `blue`).
+2. Syncs static build directory to the alternate target (`green`).
+3. Sends health requests to the inactive bucket endpoint.
+4. Updates the parameter `prod-active-color` to the alternate color upon success.
+
+### ↩️ Quick Rollback
+If you need to quickly point the production website back to the previous deployment bucket:
 ```bash
-# Set target variables and execute the rollback script:
 export SSM_PARAMETER_NAME="/site/static-site-cicd/prod-active-color"
+chmod +x ./scripts/rollback.sh
 ./scripts/rollback.sh
 ```
 
 ---
 
-## 🧪 Running Tests Locally
+## 🧪 Local Development & Verification
 
-You can run quality gates and tests on your local machine before pushing to GitHub:
+Run local checks before pushing updates:
 
 ```bash
-# Install dependencies
+# Install packages
 npm install
 
-# Run static analysis and linting
+# Run linters
 npm run lint
 
-# Run Playwright E2E smoke tests locally
+# Run Playwright E2E tests
 npm run test:e2e
 ```
